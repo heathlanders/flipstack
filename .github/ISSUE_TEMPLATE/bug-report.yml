@@ -1,0 +1,128 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["type:bug"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Bug Summary
+      description: One-line description of the bug
+      placeholder: e.g., "eBay inventory sync sends negative quantity"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps to trigger the bug
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Observe '...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happens? Include error messages if applicable.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - S1 - Blocker (system down, data loss, no workaround)
+        - S2 - Major (core feature broken, workaround exists)
+        - S3 - Minor (feature works but incorrectly in edge cases)
+        - S4 - Cosmetic (visual/UI issue, no functional impact)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Domain
+      description: Which area of the application is affected?
+      options:
+        - Auth & Organization
+        - Fulfillment
+        - Inventory
+        - Marketplace - eBay
+        - Marketplace - Shopify
+        - Marketplace - Amazon
+        - Intake Queue
+        - Analytics
+        - Procurement
+        - Pricing
+        - Customer
+        - Communication
+        - Marketing
+        - Supplier
+        - Catalog & Bundles
+        - Part-Out
+        - Warehouse
+        - Printing
+        - Dashboard
+        - Notifications
+        - Settings
+        - Admin
+        - CI/CD & Infrastructure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where does the bug occur?
+      multiple: true
+      options:
+        - Web
+        - Mobile
+        - API
+        - Infrastructure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Where was this observed?
+      options:
+        - Production
+        - Staging
+        - Local Development
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Logs
+      description: Attach screenshots, error logs, or stack traces
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / Device
+      description: Browser version, device model, OS (if relevant)
+      placeholder: e.g., "Chrome 120, macOS 14.2" or "Pixel 7, Android 14"
+    validations:
+      required: false

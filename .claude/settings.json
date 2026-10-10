@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec ecommerce_app *)",
+      "Bash(docker exec flipstack_* *)",
+      "Bash(docker ps *)",
+      "Bash(docker logs *)",
+      "Bash(docker compose *)",
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(tree *)",
+      "Bash(curl *)",
+      "Bash(ssh *)",
+      "WebFetch(domain:developer.ebay.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch"
+    ]
+  },
+  "enableAllProjectMcpServers": true
+}

@@ -1,0 +1,146 @@
+name: Build & Deploy Mobile APK
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-mobile.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which target(s) to build'
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - prod
+          - develop
+          - both
+
+env:
+  FLUTTER_VERSION: '3.41.6'
+
+jobs:
+  build-apk:
+    name: Build ${{ matrix.target }} APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: prod
+            flavor: prod
+            api_base_url: https://flipstack.app
+            apk_filename: flipstack.apk
+            deploy_path: /data/flipstack/shared/storage/app/public/downloads/flipstack.apk
+          - target: develop
+            flavor: develop
+            api_base_url: https://develop.flipstack.app
+            apk_filename: flipstack-develop.apk
+            deploy_path: /data/flipstack-staging/shared/storage/app/public/downloads/flipstack-develop.apk
+
+    steps:
+      - name: Decide whether to build this target
+        id: gate
+        run: |
+          BRANCH="${GITHUB_REF##*/}"
+          INPUT="${{ github.event.inputs.target }}"
+          TARGET="${{ matrix.target }}"
+
+          SHOULD_RUN=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "$INPUT" in
+              auto)
+                # auto = match the branch this was dispatched from
+                if { [ "$BRANCH" = "main" ] && [ "$TARGET" = "prod" ]; } \
+                  || { [ "$BRANCH" = "develop" ] && [ "$TARGET" = "develop" ]; }; then
+                  SHOULD_RUN=true
+                fi
+                ;;
+              both) SHOULD_RUN=true ;;
+              prod) [ "$TARGET" = "prod" ] && SHOULD_RUN=true ;;
+              develop) [ "$TARGET" = "develop" ] && SHOULD_RUN=true ;;
+            esac
+          else
+            # push event: build only the matching target
+            if { [ "$BRANCH" = "main" ] && [ "$TARGET" = "prod" ]; } \
+              || { [ "$BRANCH" = "develop" ] && [ "$TARGET" = "develop" ]; }; then
+              SHOULD_RUN=true
+            fi
+          fi
+
+          echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
+          echo "Branch=$BRANCH target=$TARGET should_run=$SHOULD_RUN"
+
+      - name: Checkout code
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        if: steps.gate.outputs.should_run == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Get Flutter dependencies
+        if: steps.gate.outputs.should_run == 'true'
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build release APK (${{ matrix.flavor }})
+        if: steps.gate.outputs.should_run == 'true'
+        working-directory: mobile
+        run: |
+          flutter build apk \
+            --release \
+            --flavor ${{ matrix.flavor }} \
+            --dart-define=API_BASE_URL=${{ matrix.api_base_url }} \
+            --dart-define=APP_FLAVOR=${{ matrix.flavor }}
+
+      - name: Locate + rename APK
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          # Flutter outputs flavored APKs under flutter-apk/app-{flavor}-release.apk
+          SRC="mobile/build/app/outputs/flutter-apk/app-${{ matrix.flavor }}-release.apk"
+          if [ ! -f "$SRC" ]; then
+            # Fallback for older Flutter layouts
+            SRC="mobile/build/app/outputs/apk/${{ matrix.flavor }}/release/app-${{ matrix.flavor }}-release.apk"
+          fi
+          cp "$SRC" "${{ matrix.apk_filename }}"
+          ls -lh "${{ matrix.apk_filename }}"
+
+      - name: Setup SSH key
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy APK to server
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          DEPLOY_DIR="$(dirname '${{ matrix.deploy_path }}')"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "mkdir -p $DEPLOY_DIR"
+
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ matrix.apk_filename }} \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ matrix.deploy_path }}
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "chown 1000:1000 ${{ matrix.deploy_path }}"

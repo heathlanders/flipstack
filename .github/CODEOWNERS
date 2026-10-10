@@ -1,0 +1,29 @@
+# Default owner
+* @heathlanders
+
+# Critical paths — require explicit review
+app/Http/Middleware/ @heathlanders
+app/Models/Organization/ @heathlanders
+config/ @heathlanders
+routes/ @heathlanders
+database/migrations/ @heathlanders
+.github/ @heathlanders
+docker-compose*.yaml @heathlanders
+deploy.sh @heathlanders
+
+# Marketplace integrations
+app/Services/Ebay/ @heathlanders
+app/Services/Shopify/ @heathlanders
+app/Http/Controllers/Ebay/ @heathlanders
+app/Http/Controllers/Shopify/ @heathlanders
+
+# Fulfillment
+app/Services/Fulfillment/ @heathlanders
+app/Http/Controllers/Fulfillment/ @heathlanders
+
+# Mobile app
+mobile/ @heathlanders
+
+# Inventory sync (revenue-critical)
+app/Services/MarketplaceInventorySync.php @heathlanders
+app/Jobs/Inventory/PushInventoryToMarketplaces.php @heathlanders

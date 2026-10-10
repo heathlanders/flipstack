@@ -1,0 +1,172 @@
+# Staging Docker Compose Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# This file configures staging-specific settings:
+# - Lower resource limits than production (sharing server)
+# - Debug enabled for troubleshooting
+# - Logging for debugging
+# - No development tools
+
+services:
+  app:
+    build:
+      target: production
+    restart: always
+    environment:
+      - APP_ENV=staging
+      - APP_DEBUG=true
+      - CONTAINER_ROLE=app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "php", "-r", "echo 'OK';"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  web:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  db:
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-ecommerce_staging}
+      POSTGRES_USER: ${DB_USERNAME:-ecommerce_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ecommerce_user}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  horizon:
+    build:
+      target: production
+    restart: always
+    profiles: []  # Enable by default in staging
+    environment:
+      - APP_ENV=staging
+      - APP_DEBUG=true
+      - CONTAINER_ROLE=horizon
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "php", "artisan", "horizon:status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  scheduler:
+    build:
+      target: production
+    restart: always
+    profiles: []  # Enable by default in staging
+    environment:
+      - APP_ENV=staging
+      - APP_DEBUG=true
+      - CONTAINER_ROLE=scheduler
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Disable development tools in staging
+  pgadmin:
+    profiles:
+      - never
+
+  redis-commander:
+    profiles:
+      - never
+
+  mailhog:
+    profiles:
+      - never

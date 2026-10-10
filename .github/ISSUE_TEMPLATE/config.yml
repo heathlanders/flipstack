@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/heathlanders/flipstack/tree/main/docs
+    about: Check existing documentation before opening an issue
+  - name: Feature Matrix
+    url: https://github.com/heathlanders/flipstack/blob/main/docs/FEATURE_MATRIX.md
+    about: Review current feature coverage across web, mobile API, and mobile app

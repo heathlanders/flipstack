@@ -1,0 +1,216 @@
+# FlipStack Staging - Atomic Symlink Deployment
+# Mirrors production (docker-compose.coolify.yaml) with staging-specific
+# container names, paths, Traefik labels, and resource limits.
+# Domain: develop.flipstack.app + *.develop.flipstack.app (org subdomains)
+services:
+  app-1:
+    build:
+      context: ${FLIPSTACK_BUILD_CONTEXT:-./current}
+      dockerfile: docker/php/Dockerfile
+      target: production
+    container_name: flipstack_staging_app_1
+    restart: always
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack-staging/current:/var/www/html
+      - /data/flipstack-staging/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack-staging/shared/.env
+    environment:
+      - APP_ENV=staging
+      - CONTAINER_ROLE=app
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      flipstack_staging_network:
+        aliases:
+          - app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  web:
+    build:
+      context: ${FLIPSTACK_BUILD_CONTEXT:-./current}
+      dockerfile: docker/nginx/Dockerfile
+    container_name: flipstack_staging_web
+    volumes:
+      - /data/flipstack-staging/current/public:/var/www/html/public:ro
+      - /data/flipstack-staging/shared/storage/app/public:/var/www/html/storage/app/public:ro
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_staging_network
+      - coolify
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      # HTTPS: develop.flipstack.app
+      # TODO: Add wildcard cert (*.develop.flipstack.app) for org subdomains
+      # once DNS-01 challenge is confirmed working in Traefik
+      - "traefik.http.routers.flipstack-dev.rule=Host(`develop.flipstack.app`)"
+      - "traefik.http.routers.flipstack-dev.entrypoints=https"
+      - "traefik.http.routers.flipstack-dev.tls=true"
+      - "traefik.http.routers.flipstack-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.services.flipstack-dev.loadbalancer.server.port=80"
+      - "traefik.http.services.flipstack-dev.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.flipstack-dev.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.flipstack-dev.loadbalancer.healthcheck.timeout=5s"
+      # HTTP -> HTTPS redirect
+      - "traefik.http.routers.flipstack-dev-http.rule=Host(`develop.flipstack.app`)"
+      - "traefik.http.routers.flipstack-dev-http.entrypoints=http"
+      - "traefik.http.routers.flipstack-dev-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  db:
+    image: 'postgres:16-alpine'
+    container_name: flipstack_staging_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-flipstack_staging}
+      POSTGRES_USER: ${DB_USERNAME:-flipstack_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - 'staging_postgres_data:/var/lib/postgresql/data'
+    networks:
+      - flipstack_staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  redis:
+    image: 'redis:7-alpine'
+    container_name: flipstack_staging_redis
+    restart: always
+    volumes:
+      - 'staging_redis_data:/data'
+    networks:
+      - flipstack_staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
+  horizon:
+    build:
+      context: ${FLIPSTACK_BUILD_CONTEXT:-./current}
+      dockerfile: docker/php/Dockerfile
+      target: production-worker
+    container_name: flipstack_staging_horizon
+    restart: always
+    stop_grace_period: 30s
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack-staging/current:/var/www/html
+      - /data/flipstack-staging/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack-staging/shared/.env
+    environment:
+      - APP_ENV=staging
+      - CONTAINER_ROLE=horizon
+    command: ['php', 'artisan', 'horizon']
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  scheduler:
+    build:
+      context: ${FLIPSTACK_BUILD_CONTEXT:-./current}
+      dockerfile: docker/php/Dockerfile
+      target: production-worker
+    container_name: flipstack_staging_scheduler
+    restart: always
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack-staging/current:/var/www/html
+      - /data/flipstack-staging/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack-staging/shared/.env
+    environment:
+      - APP_ENV=staging
+      - CONTAINER_ROLE=scheduler
+    command: ['php', 'artisan', 'schedule:work']
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+volumes:
+  staging_postgres_data:
+    driver: local
+  staging_redis_data:
+    driver: local
+
+networks:
+  flipstack_staging_network:
+    driver: bridge
+  coolify:
+    external: true

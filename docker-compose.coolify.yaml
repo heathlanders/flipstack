@@ -1,0 +1,161 @@
+# FlipStack Production - Atomic Symlink Deployment
+# Zero-downtime deployment via symlink-based releases
+# All containers mount /data/flipstack/current (a symlink to the active release)
+services:
+  app-1:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    container_name: flipstack_app_1
+    restart: always
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack/current:/var/www/html
+      - /data/flipstack/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack/shared/.env
+    environment:
+      - APP_ENV=production
+      - CONTAINER_ROLE=app
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      flipstack_network:
+        aliases:
+          - app
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+  web:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    container_name: flipstack_web
+    volumes:
+      - /data/flipstack/current/public:/var/www/html/public:ro
+      - /data/flipstack/shared/storage/app/public:/var/www/html/storage/app/public:ro
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_network
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.flipstack.rule=Host(`flipstack.app`)"
+      - "traefik.http.routers.flipstack.entrypoints=https"
+      - "traefik.http.routers.flipstack.tls=true"
+      - "traefik.http.routers.flipstack.tls.certresolver=letsencrypt"
+      - "traefik.http.services.flipstack.loadbalancer.server.port=80"
+      - "traefik.http.services.flipstack.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.flipstack.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.flipstack.loadbalancer.healthcheck.timeout=5s"
+      - "traefik.http.routers.flipstack-http.rule=Host(`flipstack.app`)"
+      - "traefik.http.routers.flipstack-http.entrypoints=http"
+      - "traefik.http.routers.flipstack-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 75s
+
+  db:
+    image: 'postgres:16-alpine'
+    container_name: flipstack_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-flipstack_prod}
+      POSTGRES_USER: ${DB_USERNAME:-flipstack_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - 'postgres_data:/var/lib/postgresql/data'
+    networks:
+      - flipstack_network
+
+  redis:
+    image: 'redis:7-alpine'
+    container_name: flipstack_redis
+    restart: always
+    volumes:
+      - 'redis_data:/data'
+    networks:
+      - flipstack_network
+
+  horizon:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production-worker
+    container_name: flipstack_horizon
+    restart: always
+    stop_grace_period: 30s
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack/current:/var/www/html
+      - /data/flipstack/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack/shared/.env
+    environment:
+      - APP_ENV=production
+      - CONTAINER_ROLE=horizon
+    command: ['php', 'artisan', 'horizon']
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_network
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production-worker
+    container_name: flipstack_scheduler
+    restart: always
+    working_dir: /var/www/html
+    volumes:
+      - /data/flipstack/current:/var/www/html
+      - /data/flipstack/shared/storage:/var/www/html/storage
+    env_file:
+      - /data/flipstack/shared/.env
+    environment:
+      - APP_ENV=production
+      - CONTAINER_ROLE=scheduler
+    command: ['php', 'artisan', 'schedule:work']
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      app-1:
+        condition: service_healthy
+    networks:
+      - flipstack_network
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  flipstack_network:
+    driver: bridge
+  coolify:
+    external: true

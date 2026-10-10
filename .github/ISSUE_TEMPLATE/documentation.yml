@@ -1,0 +1,78 @@
+name: Documentation
+description: Create or update documentation
+labels: ["type:docs"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Documentation Title
+      description: What documentation needs to be created or updated?
+      placeholder: e.g., "Create test plan for Pricing domain"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Domain
+      description: Which domain area does this documentation cover?
+      options:
+        - Auth & Organization
+        - Fulfillment
+        - Inventory
+        - Marketplace - eBay
+        - Marketplace - Shopify
+        - Marketplace - Amazon
+        - Intake Queue
+        - Analytics
+        - Procurement
+        - Pricing
+        - Customer
+        - Communication
+        - Marketing
+        - Supplier
+        - Catalog & Bundles
+        - Part-Out
+        - Warehouse
+        - Printing
+        - Dashboard
+        - Notifications
+        - Settings
+        - Admin
+        - Architecture / General
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doc_type
+    attributes:
+      label: Documentation Type
+      description: What kind of documentation?
+      options:
+        - Test Plan
+        - Test Cases
+        - API Documentation
+        - Feature Documentation
+        - Architecture / Design
+        - Setup / Operations
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be documented and why?
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to Create / Update
+      description: List file paths that will be created or modified
+      placeholder: |
+        - docs/testing/plans/pricing-test-plan.md (new)
+        - docs/testing/COVERAGE_MATRIX.md (update)
+    validations:
+      required: false

@@ -1,0 +1,18 @@
+# Cloudflare Tunnel config for exposing background removal server
+# Copy to ~/.cloudflared/config.yml after creating the tunnel
+#
+# Setup:
+#   cloudflared tunnel login
+#   cloudflared tunnel create bg-removal
+#   # Add CNAME: bg.flipstack.app -> <TUNNEL_ID>.cfargotunnel.com
+#   cloudflared tunnel route dns bg-removal bg.flipstack.app
+#   cloudflared service install
+#   systemctl start cloudflared
+#
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: bg.flipstack.app
+    service: http://localhost:5000
+  - service: http_status:404

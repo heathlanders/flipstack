@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            width: 400px;
+            min-height: 300px;
+            max-height: 600px;
+            padding: 0;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            overflow-x: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .header .version {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .content {
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .status-card.success {
+            border-left: 4px solid #10b981;
+            background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+        }
+        
+        .status-card.waiting {
+            border-left: 4px solid #f59e0b;
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        }
+        
+        .status-card.error {
+            border-left: 4px solid #ef4444;
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        }
+        
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 12px 0;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 8px;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #10b981;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        
+        .price-analysis {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .price-analysis h3 {
+            margin: 0 0 12px 0;
+            color: #1e40af;
+            font-size: 16px;
+        }
+        
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+            padding: 4px 0;
+        }
+        
+        .price-label {
+            color: #6b7280;
+            font-size: 13px;
+        }
+        
+        .price-value {
+            font-weight: bold;
+            color: #111827;
+            font-size: 13px;
+        }
+        
+        .insights-section {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .insight-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin: 6px 0;
+            font-size: 12px;
+        }
+        
+        .insight-item.success {
+            background: #dcfce7;
+            border-left: 3px solid #10b981;
+        }
+        
+        .insight-item.warning {
+            background: #fef3c7;
+            border-left: 3px solid #f59e0b;
+        }
+        
+        .insight-item.info {
+            background: #dbeafe;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .listings-preview {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .listing-item {
+            padding: 10px;
+            margin: 6px 0;
+            background: #f9fafb;
+            border-radius: 6px;
+            font-size: 11px;
+            border-left: 3px solid #10b981;
+        }
+        
+        .listing-title {
+            font-weight: bold;
+            color: #111827;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .listing-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .listing-price {
+            color: #10b981;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .listing-condition {
+            color: #6b7280;
+            font-size: 10px;
+        }
+        
+        .button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            width: 100%;
+            margin: 4px 0;
+        }
+        
+        .button:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+        
+        .button.secondary {
+            background: #6b7280;
+        }
+        
+        .button.secondary:hover {
+            background: #4b5563;
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .instructions {
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+            font-size: 12px;
+            color: #1e40af;
+        }
+        
+        .tab-navigation {
+            display: flex;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .tab-button {
+            flex: 1;
+            padding: 8px 12px;
+            background: white;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+        
+        .tab-button.active {
+            background: #10b981;
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .history-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .history-item:hover {
+            border-color: #10b981;
+            transform: translateY(-1px);
+        }
+        
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        
+        .history-url {
+            font-size: 11px;
+            color: #6b7280;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6b7280;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        
+        .export-options {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h2>📊 eBay Research</h2>
+            <div class="version">Full Extractor v1.0</div>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-button active" data-tab="results">Results</button>
+            <button class="tab-button" data-tab="history">History</button>
+            <button class="tab-button" data-tab="settings">Export</button>
+        </div>
+
+        <!-- Results Tab -->
+        <div id="results-tab" class="tab-content active">
+            <!-- Waiting State -->
+            <div id="waiting-state" class="status-card waiting">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+                    <div><strong>Ready for Extraction</strong></div>
+                    <div style="font-size: 12px; margin-top: 4px; color: #92400e;">
+                        Go to an eBay page and click "Extract Data"
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success State -->
+            <div id="success-state" class="status-card success hidden">
+                <div style="text-align: center; margin-bottom: 12px;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">✅</div>
+                    <div><strong id="success-title">Extraction Complete!</strong></div>
+                    <div style="font-size: 12px; margin-top: 4px; color: #065f46;" id="success-subtitle">
+                        Data extracted successfully
+                    </div>
+                </div>
+
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-listings">-</div>
+                        <div class="stat-label">Listings</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="with-prices">-</div>
+                        <div class="stat-label">With Prices</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Analysis -->
+            <div id="price-analysis-section" class="price-analysis hidden">
+                <h3>💰 Price Analysis</h3>
+                <div class="price-row">
+                    <span class="price-label">Average Price:</span>
+                    <span class="price-value" id="avg-price">-</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">Median Price:</span>
+                    <span class="price-value" id="median-price">-</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">Price Range:</span>
+                    <span class="price-value" id="price-range">-</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">Sample Size:</span>
+                    <span class="price-value" id="sample-size">-</span>
+                </div>
+            </div>
+
+            <!-- Market Insights -->
+            <div id="insights-section" class="insights-section hidden">
+                <h3 style="margin: 0 0 12px 0; color: #374151; font-size: 16px;">💡 Market Insights</h3>
+                <div id="insights-container">
+                    <!-- Insights will be populated here -->
+                </div>
+            </div>
+
+            <!-- Listings Preview -->
+            <div id="listings-section" class="listings-preview hidden">
+                <h3 style="margin: 0 0 12px 0; color: #374151; font-size: 16px;">📝 Sample Listings</h3>
+                <div id="listings-container">
+                    <!-- Listings will be populated here -->
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="button-group">
+                <button class="button secondary" onclick="clearResults()">Clear Results</button>
+                <button class="button" onclick="refreshData()">Refresh</button>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions">
+                <strong>🧪 How to Use:</strong><br>
+                1. Navigate to an eBay search or research page<br>
+                2. Look for the green "Extract Data" button<br>
+                3. Click to extract and analyze listings<br>
+                4. View detailed results here!
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history-tab" class="tab-content">
+            <div id="history-container">
+                <!-- History items will be populated here -->
+            </div>
+            
+            <div id="empty-history" class="empty-state hidden">
+                <div class="empty-state-icon">📋</div>
+                <div><strong>No extraction history</strong></div>
+                <div style="font-size: 12px; margin-top: 4px;">
+                    Start extracting eBay data to see your history
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings/Export Tab -->
+        <div id="settings-tab" class="tab-content">
+            <!-- FlipStack Settings -->
+            <div class="export-options" style="margin-bottom: 16px;">
+                <h3 style="margin: 0 0 16px 0;">FlipStack Settings</h3>
+
+                <div style="margin-bottom: 12px;">
+                    <label for="flipstack-url" style="display: block; font-size: 12px; color: #374151; margin-bottom: 4px; font-weight: 500;">FlipStack URL</label>
+                    <input type="url" id="flipstack-url" value="https://flipstack.app" placeholder="https://flipstack.app" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <label for="flipstack-token" style="display: block; font-size: 12px; color: #374151; margin-bottom: 4px; font-weight: 500;">API Token</label>
+                    <input type="password" id="flipstack-token" placeholder="Your Sanctum API token" style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                </div>
+
+                <div class="button-group">
+                    <button class="button" onclick="saveFlipStackSettings()">Save</button>
+                    <button class="button secondary" onclick="testFlipStackConnection()">Test</button>
+                </div>
+
+                <div id="flipstack-status" style="margin-top: 8px; font-size: 12px; display: none;"></div>
+            </div>
+
+            <!-- Export Options -->
+            <div class="export-options">
+                <h3 style="margin: 0 0 16px 0;">Export Data</h3>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="export-current" checked>
+                    <label for="export-current">Export latest extraction</label>
+                </div>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="export-history">
+                    <label for="export-history">Include extraction history</label>
+                </div>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="export-detailed">
+                    <label for="export-detailed">Include detailed listings</label>
+                </div>
+
+                <button class="button" onclick="exportData()" style="margin-top: 12px;">
+                    Export as JSON
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

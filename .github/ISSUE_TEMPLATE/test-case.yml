@@ -1,0 +1,102 @@
+name: Test Implementation
+description: Create or improve automated tests for a feature area
+labels: ["type:test"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Test Title
+      description: What is being tested?
+      placeholder: e.g., "Add unit tests for repricing engine price guards"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Domain
+      description: Which domain area is being tested?
+      options:
+        - Auth & Organization
+        - Fulfillment
+        - Inventory
+        - Marketplace - eBay
+        - Marketplace - Shopify
+        - Marketplace - Amazon
+        - Intake Queue
+        - Analytics
+        - Procurement
+        - Pricing
+        - Customer
+        - Communication
+        - Marketing
+        - Supplier
+        - Catalog & Bundles
+        - Part-Out
+        - Warehouse
+        - Printing
+        - Dashboard
+        - Notifications
+        - Settings
+        - Admin
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform?
+      multiple: true
+      options:
+        - Web (Laravel/PHPUnit)
+        - Mobile (Flutter/Dart)
+        - API (Laravel/PHPUnit)
+        - Frontend (Vitest/Vue Test Utils)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test_type
+    attributes:
+      label: Test Type
+      description: What kind of tests?
+      multiple: true
+      options:
+        - Unit
+        - Feature / Integration
+        - E2E / Workflow
+        - UI / Visual
+        - API Contract
+    validations:
+      required: true
+
+  - type: input
+    id: test_doc_path
+    attributes:
+      label: Linked Test Documentation
+      description: Path to the test case documentation file (if it exists)
+      placeholder: e.g., "docs/testing/cases/fulfillment/TC-FUL-001-order-import.md"
+    validations:
+      required: false
+
+  - type: textarea
+    id: test_cases
+    attributes:
+      label: Test Cases to Implement
+      description: List the specific test cases or scenarios
+      placeholder: |
+        - [ ] Happy path: valid input produces expected output
+        - [ ] Edge case: empty input handled gracefully
+        - [ ] Permission check: unauthorized user gets 403
+        - [ ] Multi-tenant: org A cannot access org B data
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Relevant code paths, existing tests, dependencies
+    validations:
+      required: false

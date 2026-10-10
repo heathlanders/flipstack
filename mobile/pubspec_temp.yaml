@@ -1,0 +1,6 @@
+name: ecommerce_mobile_app 
+description: "E-commerce mobile application" 
+publish_to: 'none' 
+version: 1.0.0+1 
+ 
+environment: 

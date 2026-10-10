@@ -1,0 +1,82 @@
+# Dependencies - installed inside container
+node_modules
+vendor
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Environment files (use Docker secrets/env vars instead)
+.env
+.env.*
+!.env.example
+
+# Logs and caches
+*.log
+npm-debug.log
+yarn-error.log
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+!storage/**/.gitkeep
+bootstrap/cache/*.php
+
+# Testing
+.phpunit.result.cache
+.phpunit.cache
+coverage/
+tests/
+phpunit.xml
+
+# Build artifacts that get regenerated
+public/hot
+public/css
+public/js
+
+# Documentation and non-essential files
+*.md
+!README.md
+LICENSE
+CHANGELOG*
+
+# Docker files (not needed inside container)
+docker-compose*.yml
+docker-compose*.yaml
+Dockerfile*
+.dockerignore
+
+# Development tools
+background-removal-server/
+namespace_audit/
+
+# Mobile app (separate deployment)
+mobile/
+
+# Temporary and backup files
+*.bak
+*.backup
+*.swp
+*~
+*.tmp
+
+# Certificates and keys (use Docker secrets instead)
+*.pem
+*.key
+*.crt
+
+# SQLite databases
+*.sqlite
+
+# Uploaded files (use volumes instead)
+public/uploads/*
+storage/app/*

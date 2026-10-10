@@ -1,0 +1,410 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  PHP_VERSION: '8.3'
+  NODE_VERSION: '20'
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://develop.${{ vars.DOMAIN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+        env:
+          VITE_PUSHER_APP_KEY: "9e50aee9ff5c362a01b7"
+          VITE_PUSHER_APP_CLUSTER: "us2"
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Generate release name
+        id: release
+        run: echo "name=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: Create release directory on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "mkdir -p /data/flipstack-staging/releases/${{ steps.release.outputs.name }}"
+
+      - name: Sync code to release directory
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='.env' \
+            --exclude='storage' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/data/flipstack-staging/releases/${{ steps.release.outputs.name }}/
+
+      - name: Run deploy script
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
+          script: |
+            cd /data/flipstack-staging/releases/${{ steps.release.outputs.name }}
+            chmod +x deploy.sh
+            FLIPSTACK_DIR=/data/flipstack-staging \
+            FLIPSTACK_COMPOSE=docker-compose.coolify-staging.yaml \
+            FLIPSTACK_PREFIX=flipstack_staging \
+            FLIPSTACK_DOMAIN=develop.${{ vars.DOMAIN }} \
+            ./deploy.sh --release=${{ steps.release.outputs.name }}
+
+      - name: Verify deployment via server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 3m
+          script: |
+            echo "Verifying staging deployment from server..."
+
+            # Check deploy.sh result
+            STATUS=$(cat /data/flipstack-staging/deploy-result.txt 2>/dev/null | grep DEPLOY_STATUS | cut -d= -f2)
+            echo "Deploy script status: $STATUS"
+            if [ "$STATUS" = "rolled_back" ] || [ "$STATUS" = "failed_no_rollback" ] || [ "$STATUS" = "failed_rollback_broken" ]; then
+              echo "Deploy script reported failure: $STATUS"
+              exit 1
+            fi
+
+            # Verify staging containers are healthy
+            echo "Checking container health..."
+            for container in flipstack_staging_app_1 flipstack_staging_web; do
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "not_found")
+              echo "$container: $HEALTH"
+              if [ "$HEALTH" != "healthy" ]; then
+                echo "ERROR: $container is not healthy"
+                docker logs "$container" --tail 20
+                exit 1
+              fi
+            done
+
+            # Verify Traefik routing from server
+            echo "Checking Traefik routing..."
+            HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+              --resolve "develop.${{ vars.DOMAIN }}:443:127.0.0.1" \
+              --max-time 10 -k \
+              "https://develop.${{ vars.DOMAIN }}/api/health" 2>/dev/null)
+            echo "Traefik routing: HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "ERROR: Traefik not routing traffic to staging"
+              exit 1
+            fi
+
+            # Verify Horizon is running
+            echo "Checking Horizon..."
+            docker exec flipstack_staging_app_1 php artisan horizon:status || true
+
+            echo "Staging deployment verification passed"
+
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            cd /data/flipstack-staging
+            PREVIOUS=$(cat deploy-result.txt 2>/dev/null | grep DEPLOY_PREVIOUS | cut -d= -f2)
+            STATUS=$(cat deploy-result.txt 2>/dev/null | grep DEPLOY_STATUS | cut -d= -f2)
+
+            # If deploy.sh already rolled back, skip
+            if [ "$STATUS" = "rolled_back" ]; then
+              echo "deploy.sh already performed rollback"
+              exit 0
+            fi
+
+            if [ -n "$PREVIOUS" ] && [ -d "$PREVIOUS" ]; then
+              echo "Rolling back staging to $PREVIOUS"
+              ln -sfn "$PREVIOUS" /data/flipstack-staging/current
+              docker compose -f docker-compose.coolify-staging.yaml up -d --no-deps --force-recreate --no-build app-1
+              echo "Waiting for app-1 health..."
+              for i in {1..30}; do
+                if docker inspect --format='{{.State.Health.Status}}' flipstack_staging_app_1 2>/dev/null | grep -q "healthy"; then
+                  echo "app-1 healthy"
+                  break
+                fi
+                sleep 3
+              done
+              docker compose -f docker-compose.coolify-staging.yaml up -d --no-deps --force-recreate --no-build web
+              echo "Waiting for web health..."
+              for i in {1..30}; do
+                if docker inspect --format='{{.State.Health.Status}}' flipstack_staging_web 2>/dev/null | grep -q "healthy"; then
+                  echo "web healthy"
+                  break
+                fi
+                sleep 3
+              done
+              docker compose -f docker-compose.coolify-staging.yaml up -d --no-deps --force-recreate --no-build horizon scheduler
+              docker exec flipstack_staging_horizon php artisan horizon:terminate || true
+              echo "Staging rollback complete"
+            else
+              echo "No previous release found for staging rollback"
+              exit 1
+            fi
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://${{ vars.DOMAIN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+        env:
+          VITE_PUSHER_APP_KEY: "9e50aee9ff5c362a01b7"
+          VITE_PUSHER_APP_CLUSTER: "us2"
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Generate release name
+        id: release
+        run: echo "name=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: Create release directory on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "mkdir -p /data/flipstack/releases/${{ steps.release.outputs.name }}"
+
+      - name: Sync code to release directory
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='.env' \
+            --exclude='storage' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/data/flipstack/releases/${{ steps.release.outputs.name }}/
+
+      - name: Run deploy script
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
+          script: |
+            cd /data/flipstack/releases/${{ steps.release.outputs.name }}
+            chmod +x deploy.sh
+            ./deploy.sh --release=${{ steps.release.outputs.name }}
+
+      - name: Verify deployment via server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 3m
+          script: |
+            echo "Verifying deployment from server..."
+
+            # Check deploy.sh result
+            STATUS=$(cat /data/flipstack/deploy-result.txt 2>/dev/null | grep DEPLOY_STATUS | cut -d= -f2)
+            echo "Deploy script status: $STATUS"
+            if [ "$STATUS" = "rolled_back" ] || [ "$STATUS" = "failed_no_rollback" ] || [ "$STATUS" = "failed_rollback_broken" ]; then
+              echo "Deploy script reported failure: $STATUS"
+              exit 1
+            fi
+
+            # Verify all containers are healthy
+            echo "Checking container health..."
+            for container in flipstack_app_1 flipstack_web; do
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "not_found")
+              echo "$container: $HEALTH"
+              if [ "$HEALTH" != "healthy" ]; then
+                echo "ERROR: $container is not healthy"
+                docker logs "$container" --tail 20
+                exit 1
+              fi
+            done
+
+            # Verify Traefik routing from server
+            echo "Checking Traefik routing..."
+            HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+              --resolve "flipstack.app:443:127.0.0.1" \
+              --max-time 10 -k \
+              "https://flipstack.app/api/health" 2>/dev/null)
+            echo "Traefik routing: HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "ERROR: Traefik not routing traffic"
+              exit 1
+            fi
+
+            # Verify Horizon is running
+            echo "Checking Horizon..."
+            docker exec flipstack_app_1 php artisan horizon:status || true
+
+            echo "Deployment verification passed"
+
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            cd /data/flipstack
+            PREVIOUS=$(cat deploy-result.txt 2>/dev/null | grep DEPLOY_PREVIOUS | cut -d= -f2)
+            STATUS=$(cat deploy-result.txt 2>/dev/null | grep DEPLOY_STATUS | cut -d= -f2)
+
+            # If deploy.sh already rolled back, skip
+            if [ "$STATUS" = "rolled_back" ]; then
+              echo "deploy.sh already performed rollback"
+              exit 0
+            fi
+
+            if [ -n "$PREVIOUS" ] && [ -d "$PREVIOUS" ]; then
+              echo "Rolling back to $PREVIOUS"
+              ln -sfn "$PREVIOUS" /data/flipstack/current
+              docker compose -f docker-compose.coolify.yaml up -d --no-deps --force-recreate --no-build app-1
+              echo "Waiting for app-1 health..."
+              for i in {1..30}; do
+                if docker inspect --format='{{.State.Health.Status}}' flipstack_app_1 2>/dev/null | grep -q "healthy"; then
+                  echo "app-1 healthy"
+                  break
+                fi
+                sleep 3
+              done
+              docker compose -f docker-compose.coolify.yaml up -d --no-deps --force-recreate --no-build web
+              echo "Waiting for web health..."
+              for i in {1..30}; do
+                if docker inspect --format='{{.State.Health.Status}}' flipstack_web 2>/dev/null | grep -q "healthy"; then
+                  echo "web healthy"
+                  break
+                fi
+                sleep 3
+              done
+              docker compose -f docker-compose.coolify.yaml up -d --no-deps --force-recreate --no-build horizon scheduler
+              docker exec flipstack_horizon php artisan horizon:terminate || true
+              echo "Rollback complete"
+            else
+              echo "No previous release found for rollback"
+              exit 1
+            fi
+
+  notify:
+    name: Deployment Notification
+    needs: [deploy-staging, deploy-production]
+    runs-on: ubuntu-latest
+    if: always() && (needs.deploy-production.result == 'success' || needs.deploy-production.result == 'failure')
+
+    steps:
+      - name: Report deployment result
+        run: |
+          if [ "${{ needs.deploy-production.result }}" = "success" ]; then
+            echo "::notice::Deployment SUCCEEDED for ${{ github.ref_name }} (commit ${{ github.sha }})"
+          else
+            echo "::error::Deployment FAILED for ${{ github.ref_name }} (commit ${{ github.sha }}) - auto-rollback attempted"
+          fi
+
+          # Uncomment and configure for Slack/Discord notifications:
+          # curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          #   -H 'Content-type: application/json' \
+          #   -d "{\"text\":\"Deployment ${{ needs.deploy-production.result }} for ${{ github.ref_name }}\"}"
