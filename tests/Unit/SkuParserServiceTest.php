@@ -428,8 +428,8 @@ class SkuParserServiceTest extends TestCase
     public function test_parse_multi_returns_null_when_no_match(): void
     {
         $arcWithPrefix = array_merge($this->arcConfig(), ['prefix' => 'ARC']);
-        $bstarOnly = array_merge($this->ownerLocationConfig(), ['prefix' => 'HAWK']);
-        $parsers = [$arcWithPrefix, $bstarOnly];
+        $hawkOnly = array_merge($this->ownerLocationConfig(), ['prefix' => 'HAWK']);
+        $parsers = [$arcWithPrefix, $hawkOnly];
         $result = $this->parser->parseMulti('UNKNOWN 12345', $parsers);
         $this->assertNull($result);
     }
